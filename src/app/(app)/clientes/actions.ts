@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { excluirInstancia } from "@/lib/evolution";
 
 export type EstadoCliente = { erro?: string; aviso?: string };
 
@@ -58,6 +59,8 @@ export async function atualizarCliente(id: string, _: EstadoCliente, form: FormD
 
 export async function excluirCliente(id: string) {
   const supabase = await createClient();
+  const { data } = await supabase.from("conexoes_whatsapp").select("instancia").eq("cliente_id", id).maybeSingle();
+  if (data) await excluirInstancia(data.instancia);
   await supabase.from("clientes").delete().eq("id", id);
   revalidatePath("/painel");
   redirect("/painel");

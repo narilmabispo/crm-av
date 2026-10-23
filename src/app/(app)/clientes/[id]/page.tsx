@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import { carregarConta, type Cliente } from "@/lib/conta";
 import { atualizarCliente, excluirCliente } from "../actions";
 import { FormCliente } from "../FormCliente";
+import { Atendimento } from "./atendimento/Atendimento";
 
-type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ aba?: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ aba?: string; conversa?: string }> };
 
 export default async function PerfilCliente({ params, searchParams }: Props) {
   const { id } = await params;
-  const { aba = "atendimento" } = await searchParams;
+  const { aba = "atendimento", conversa } = await searchParams;
   const { supabase } = await carregarConta();
 
   const { data } = await supabase
@@ -60,16 +61,7 @@ export default async function PerfilCliente({ params, searchParams }: Props) {
           </form>
         </div>
       ) : (
-        <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center">
-          <p className="text-lg font-medium">WhatsApp ainda não conectado</p>
-          <p className="mt-2 text-sm text-gray-600">
-            Em breve: conecte o WhatsApp da empresa de {cliente.nome} escaneando um QR Code e atenda as conversas por
-            aqui.
-          </p>
-          <button className="botao mt-6" disabled>
-            Conectar WhatsApp
-          </button>
-        </div>
+        <Atendimento clienteId={id} nomeCliente={cliente.nome} conversaId={conversa} />
       )}
     </>
   );
