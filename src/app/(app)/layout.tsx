@@ -40,6 +40,12 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
                 <p className="truncate font-medium">{nome}</p>
                 <p className="truncate text-xs text-gray-500">{user.email}</p>
               </div>
+              <Link href="/perfil" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-lavanda">
+                <Icone nome="usuario" className="h-4 w-4" /> Meu perfil
+              </Link>
+              <Link href="/perfil#financeiro" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-lavanda">
+                <Icone nome="coroa" className="h-4 w-4" /> Plano e pagamento
+              </Link>
               <Link href="/conta" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-lavanda">
                 <Icone nome="configuracoes" className="h-4 w-4" /> Configurações
               </Link>

@@ -7,7 +7,7 @@ export function BotaoNovoWhatsapp({ podeAdicionar }: { podeAdicionar: boolean })
       <Icone nome="mais" /> Conectar novo WhatsApp
     </Link>
   ) : (
-    <Link href="/conta" className="botao-laranja" title="Seu plano chegou ao limite de clientes">
+    <Link href="/perfil#financeiro" className="botao-laranja" title="Seu plano chegou ao limite de clientes">
       Aumentar plano
     </Link>
   );

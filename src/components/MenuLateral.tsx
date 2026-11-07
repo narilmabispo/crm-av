@@ -87,7 +87,7 @@ export function MenuLateral({ naoLidas, plano, usados, limite }: Props) {
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-orange-100">
             <div className="h-full rounded-full bg-laranja" style={{ width: `${porcentagem}%` }} />
           </div>
-          <Link href="/conta" className="mt-3 inline-block text-sm font-medium text-marca-escura hover:underline">
+          <Link href="/perfil#financeiro" className="mt-3 inline-block text-sm font-medium text-marca-escura hover:underline">
             Gerenciar plano
           </Link>
         </div>
