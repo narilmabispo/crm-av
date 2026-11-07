@@ -41,9 +41,17 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
   const fim = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  useEffect(() => setConversas(iniciais), [iniciais]);
-  useEffect(() => setMensagens(msgsIniciais), [msgsIniciais]);
-  useEffect(() => fim.current?.scrollIntoView(), [mensagens]);
+  useEffect(() => {
+    setConversas(iniciais);
+  }, [iniciais]);
+  useEffect(() => {
+    setMensagens(msgsIniciais);
+  }, [msgsIniciais]);
+  // Chaves de propósito: navegadores novos fazem scrollIntoView devolver uma Promise,
+  // e o React trataria esse retorno como função de limpeza (era o "u is not a function").
+  useEffect(() => {
+    fim.current?.scrollIntoView();
+  }, [mensagens]);
 
   const selecionadaId = selecionada?.id;
 
