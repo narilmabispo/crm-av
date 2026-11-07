@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import * as evolution from "@/lib/evolution";
+import { ehConversaIndividual } from "@/lib/mensagem-whatsapp";
+import { salvarMensagens, type MensagemEvolution } from "@/lib/salvar-mensagens";
 
 export type Conexao = { status: string; qr_code: string | null; numero: string | null };
 
@@ -19,7 +21,7 @@ const VARIAVEIS = ["EVOLUTION_API_URL", "EVOLUTION_API_KEY", "SUPABASE_SERVICE_R
 
 // Traduz a falha da Evolution API numa mensagem que diz o que conferir na configuração.
 function explicarErro(e: unknown): string {
-  if (!(e instanceof evolution.ErroEvolution)) return "Erro inesperado ao gerar o QR Code.";
+  if (!(e instanceof evolution.ErroEvolution)) return "Erro inesperado no servidor do WhatsApp.";
   if (e.status === 0) return `Não consegui acessar o servidor do WhatsApp. Confira o EVOLUTION_API_URL na Vercel. (${e.corpo.slice(0, 120)})`;
   if (e.status === 401 || (e.status === 403 && /unauthorized|forbidden/i.test(e.corpo)))
     return "O servidor do WhatsApp recusou a chave. Confira o EVOLUTION_API_KEY na Vercel.";
@@ -59,6 +61,7 @@ export async function conectarWhatsapp(clienteId: string): Promise<{ conexao?: C
     console.error("conectarWhatsapp", e);
     return { erro: explicarErro(e) };
   }
+  await evolution.configurarInstancia(instancia).catch((e) => console.error("configurarInstancia", e));
 
   const conexao = { status: "aguardando_qr", qr_code: qr, numero: null };
   const { error: erroSalvar } = await admin.from("conexoes_whatsapp").upsert(
@@ -133,8 +136,9 @@ export async function enviarMensagem(conversaId: string, texto: string): Promise
   let waId: string | undefined;
   try {
     waId = (await evolution.enviarTexto(conexao.instancia, conversa.jid, limpo)).key?.id;
-  } catch {
-    return { erro: "Não foi possível enviar. Tente de novo em instantes." };
+  } catch (e) {
+    console.error("enviarMensagem", e);
+    return { erro: `Não foi possível enviar. ${explicarErro(e)}` };
   }
 
   const agora = new Date().toISOString();
@@ -160,4 +164,39 @@ export async function enviarMensagem(conversaId: string, texto: string): Promise
 export async function marcarComoLida(conversaId: string) {
   const supabase = await createClient();
   await supabase.from("conversas").update({ nao_lidas: 0 }).eq("id", conversaId);
+}
+
+const LIMITE_CONVERSAS = 40;
+const LIMITE_MENSAGENS = 50;
+
+// Traz para a plataforma as conversas que o servidor do WhatsApp já guardou
+// (o histórico que o WhatsApp entrega quando o aparelho é conectado).
+export async function importarHistorico(clienteId: string): Promise<{ conversas?: number; erro?: string }> {
+  const cliente = await clienteDaAssistente(clienteId);
+  const admin = createAdminClient();
+  const instancia = `av-${cliente.id}`;
+  const conexao = { cliente_id: cliente.id, assistente_id: cliente.assistente_id };
+
+  try {
+    await evolution.configurarInstancia(instancia).catch((e) => console.error("configurarInstancia", e));
+    const jids = (await evolution.listarConversas(instancia)).filter(ehConversaIndividual).slice(0, LIMITE_CONVERSAS);
+
+    let importadas = 0;
+    for (let i = 0; i < jids.length; i += 5) {
+      const lote = jids.slice(i, i + 5);
+      await Promise.all(
+        lote.map(async (jid) => {
+          const mensagens = (await evolution.listarMensagens(instancia, jid, LIMITE_MENSAGENS)) as MensagemEvolution[];
+          if (!mensagens.length) return;
+          await salvarMensagens(admin, conexao, mensagens, { historico: true });
+          importadas++;
+        }),
+      );
+    }
+    revalidatePath(`/clientes/${clienteId}`);
+    return { conversas: importadas };
+  } catch (e) {
+    console.error("importarHistorico", e);
+    return { erro: explicarErro(e) };
+  }
 }

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ehConversaIndividual, lerConteudo } from "@/lib/mensagem-whatsapp";
+import { salvarMensagens } from "@/lib/salvar-mensagens";
 
 // Recebe os avisos da Evolution API: QR Code novo, mudança de conexão e mensagens.
 export async function POST(request: NextRequest) {
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   }
 
   const corpo = await request.json();
-  const evento = String(corpo.event ?? "").toLowerCase().replace("_", ".");
+  const evento = String(corpo.event ?? "").toLowerCase().replaceAll("_", ".");
   const supabase = createAdminClient();
 
   const { data: conexao } = await supabase
@@ -48,78 +48,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (evento === "messages.upsert") {
+  // messages.upsert: recebidas e enviadas pelo celular; send.message: enviadas pela API.
+  if (evento === "messages.upsert" || evento === "send.message") {
     const lista = Array.isArray(corpo.data) ? corpo.data : [corpo.data];
-    for (const m of lista) await salvarMensagem(supabase, conexao, m);
+    await salvarMensagens(supabase, conexao, lista);
   }
 
   return NextResponse.json({ ok: true });
-}
-
-type Conexao = { cliente_id: string; assistente_id: string };
-
-type MensagemEvolution = {
-  key?: { id?: string; remoteJid?: string; fromMe?: boolean };
-  pushName?: string;
-  message?: Parameters<typeof lerConteudo>[0];
-  messageTimestamp?: number | string;
-};
-
-async function salvarMensagem(supabase: ReturnType<typeof createAdminClient>, conexao: Conexao, m: MensagemEvolution) {
-  const jid: string = m?.key?.remoteJid ?? "";
-  if (!m?.key?.id || !ehConversaIndividual(jid)) return;
-
-  const deMim = Boolean(m.key!.fromMe);
-  const { tipo, texto } = lerConteudo(m.message);
-  const quando = m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000).toISOString() : new Date().toISOString();
-
-  const { data: existente } = await supabase
-    .from("conversas")
-    .select("id, nome, nao_lidas")
-    .eq("cliente_id", conexao.cliente_id)
-    .eq("jid", jid)
-    .maybeSingle();
-
-  let conversaId = existente?.id as string | undefined;
-  if (!conversaId) {
-    const { data: nova } = await supabase
-      .from("conversas")
-      .upsert(
-        { cliente_id: conexao.cliente_id, assistente_id: conexao.assistente_id, jid },
-        { onConflict: "cliente_id,jid" },
-      )
-      .select("id")
-      .single();
-    conversaId = nova?.id;
-  }
-  if (!conversaId) return;
-
-  const { data: inserida } = await supabase
-    .from("mensagens")
-    .upsert(
-      {
-        conversa_id: conversaId,
-        assistente_id: conexao.assistente_id,
-        wa_id: m.key!.id,
-        de_mim: deMim,
-        tipo,
-        texto,
-        enviada_em: quando,
-      },
-      { onConflict: "conversa_id,wa_id", ignoreDuplicates: true },
-    )
-    .select("id");
-
-  // Mensagem repetida (por exemplo, a que a própria plataforma enviou): não mexe na conversa.
-  if (!inserida?.length) return;
-
-  await supabase
-    .from("conversas")
-    .update({
-      nome: !deMim && m.pushName ? m.pushName : existente?.nome ?? null,
-      ultima_mensagem: texto,
-      ultima_em: quando,
-      nao_lidas: deMim ? 0 : (existente?.nao_lidas ?? 0) + 1,
-    })
-    .eq("id", conversaId);
 }

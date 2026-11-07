@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { desconectarWhatsapp, enviarMensagem, marcarComoLida } from "./actions";
+import { desconectarWhatsapp, enviarMensagem, importarHistorico, marcarComoLida } from "./actions";
 
 export type Conversa = {
   id: string;
@@ -35,21 +36,27 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
   const [texto, setTexto] = useState("");
   const [erro, setErro] = useState<string>();
   const [enviando, iniciar] = useTransition();
+  const [importando, iniciarImportacao] = useTransition();
+  const [aviso, setAviso] = useState<string>();
   const fim = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   useEffect(() => setConversas(iniciais), [iniciais]);
   useEffect(() => setMensagens(msgsIniciais), [msgsIniciais]);
   useEffect(() => fim.current?.scrollIntoView(), [mensagens]);
 
+  const selecionadaId = selecionada?.id;
+
   useEffect(() => {
-    if (selecionada) marcarComoLida(selecionada.id);
-  }, [selecionada]);
+    if (selecionadaId) marcarComoLida(selecionadaId);
+  }, [selecionadaId]);
 
   // Atualiza a lista de conversas e o chat aberto em tempo real.
   useEffect(() => {
     const supabase = createClient();
     const canal = supabase
-      .channel(`atendimento-${clienteId}`)
+      // Nome único por montagem: reaproveitar um canal já assinado derruba a página.
+      .channel(`atendimento-${clienteId}-${selecionadaId ?? "lista"}-${Math.random().toString(36).slice(2)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversas", filter: `cliente_id=eq.${clienteId}` },
@@ -63,14 +70,14 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
           );
         },
       );
-    if (selecionada) {
+    if (selecionadaId) {
       canal.on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "mensagens", filter: `conversa_id=eq.${selecionada.id}` },
+        { event: "INSERT", schema: "public", table: "mensagens", filter: `conversa_id=eq.${selecionadaId}` },
         ({ new: nova }) => {
           const m = nova as Mensagem;
           setMensagens((atuais) => (atuais.some((x) => x.id === m.id) ? atuais : [...atuais, m]));
-          if (!m.de_mim) marcarComoLida(selecionada.id);
+          if (!m.de_mim) marcarComoLida(selecionadaId);
         },
       );
     }
@@ -78,7 +85,28 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
     return () => {
       supabase.removeChannel(canal);
     };
-  }, [clienteId, selecionada]);
+  }, [clienteId, selecionadaId]);
+
+  // Garantia caso o tempo real não chegue: busca novidades a cada poucos segundos com a aba aberta.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [router]);
+
+  const importar = () =>
+    iniciarImportacao(async () => {
+      setAviso(undefined);
+      const r = await importarHistorico(clienteId);
+      setAviso(
+        r.erro ??
+          (r.conversas
+            ? `${r.conversas} conversas importadas.`
+            : "Nenhum histórico disponível no servidor. Desconecte e escaneie o QR Code de novo para o WhatsApp enviar o histórico."),
+      );
+      router.refresh();
+    });
 
   const enviar = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,6 +117,7 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
       const r = await enviarMensagem(selecionada.id, conteudo);
       setErro(r.erro);
       if (r.erro) setTexto(conteudo);
+      else router.refresh();
     });
   };
 
@@ -96,12 +125,18 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2 text-sm">
         <span className="text-marca-escura">● Conectado{numero ? ` · +${numero}` : ""}</span>
-        <button
+        <div className="flex items-center gap-4">
+          {aviso && <span className="text-gray-600">{aviso}</span>}
+          <button onClick={importar} disabled={importando} className="text-marca hover:underline disabled:opacity-60">
+            {importando ? "Importando..." : "Importar histórico"}
+          </button>
+          <button
           onClick={() => confirm("Desconectar o WhatsApp deste cliente?") && desconectarWhatsapp(clienteId)}
           className="text-gray-500 hover:text-red-600"
         >
           Desconectar
-        </button>
+          </button>
+        </div>
       </div>
       <div className="grid h-[70vh] grid-cols-1 md:grid-cols-[300px_1fr]">
         <ul className={`overflow-y-auto border-r border-gray-200 ${selecionada ? "hidden md:block" : ""}`}>

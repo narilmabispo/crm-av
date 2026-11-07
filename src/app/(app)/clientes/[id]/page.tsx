@@ -5,6 +5,9 @@ import { atualizarCliente, excluirCliente } from "../actions";
 import { FormCliente } from "../FormCliente";
 import { Atendimento } from "./atendimento/Atendimento";
 
+// A importação do histórico pode levar alguns segundos.
+export const maxDuration = 60;
+
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ aba?: string; conversa?: string }> };
 
 export default async function PerfilCliente({ params, searchParams }: Props) {
