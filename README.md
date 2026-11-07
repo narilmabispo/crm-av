@@ -1,4 +1,4 @@
-# CRM AV
+# ZapDesk (CRM AV)
 
 CRM para assistentes virtuais que atendem os clientes pelo WhatsApp. Feito com Next.js, Supabase e Vercel.
 

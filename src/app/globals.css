@@ -1,31 +1,70 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f7f5;
-  --foreground: #1f2328;
+  --background: #f8f5ff;
+  --foreground: #1f1633;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-marca: #128c7e;
-  --color-marca-escura: #0b6b60;
+  /* Roxo principal da marca (as classes "marca" são usadas no chat também). */
+  --color-marca: #8b5cf6;
+  --color-marca-escura: #6d28d9;
+  --color-laranja: #f97316;
+  --color-laranja-escura: #ea580c;
+  --color-tinta: #2e1065;
+  --color-lilas: #c4b5fd;
+  --color-pessego: #fdba74;
+  --color-creme: #fff7f0;
+  --color-lavanda: #f1ebff;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
 }
 
-.campo {
-  @apply w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-marca focus:ring-2 focus:ring-marca/20;
+/* Poppins nos títulos, destaques e botões; Inter nos textos. */
+h1,
+h2,
+h3,
+.titulo,
+.botao,
+.botao-secundario,
+.botao-laranja {
+  font-family: var(--font-poppins), var(--font-sans);
 }
 
-.botao {
-  @apply inline-flex items-center justify-center rounded-lg bg-marca px-4 py-2 text-sm font-medium text-white hover:bg-marca-escura disabled:opacity-60;
+/* Classes próprias ficam na camada "components" para que as utilitárias (ex.: pl-11) possam sobrescrever. */
+@layer components {
+  .campo {
+    @apply w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-marca focus:ring-2 focus:ring-marca/20;
+  }
+
+  .botao {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-marca px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-marca/30 hover:bg-marca-escura disabled:opacity-60;
+  }
+
+  .botao-secundario {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-gray-50;
+  }
+
+  .botao-laranja {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border-2 border-laranja bg-white px-4 py-2.5 text-sm font-semibold text-laranja-escura hover:bg-orange-50;
+  }
+
+  .cartao {
+    @apply rounded-2xl border border-gray-100 bg-white shadow-sm;
+  }
 }
 
-.botao-secundario {
-  @apply inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50;
+/* Menu de três pontinhos feito com <details>: esconde a setinha padrão. */
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details > summary {
+  list-style: none;
 }

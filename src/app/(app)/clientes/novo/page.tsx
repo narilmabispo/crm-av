@@ -7,9 +7,10 @@ export default async function NovoCliente() {
   const { podeAdicionar, limite } = await carregarConta();
   return (
     <div className="max-w-2xl">
-      <h1 className="mb-6 text-2xl font-semibold">Novo cliente</h1>
+      <h1 className="text-2xl font-bold text-tinta">Novo cliente</h1>
+      <p className="mb-6 text-gray-600">Cadastre o cliente. Depois é só conectar o WhatsApp dele pelo QR Code.</p>
       {podeAdicionar ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-6">
+        <div className="cartao p-6">
           <FormCliente acao={criarCliente} botao="Salvar cliente" />
         </div>
       ) : (
