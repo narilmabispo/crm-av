@@ -27,7 +27,9 @@ export function ConectarWhatsapp({ clienteId, nomeCliente, conexao: inicial }: P
     iniciar(async () => {
       setErro(undefined);
       try {
-        setConexao(await conectarWhatsapp(clienteId));
+        const r = await conectarWhatsapp(clienteId);
+        if (r.conexao) setConexao(r.conexao);
+        setErro(r.erro);
       } catch {
         setErro("Não foi possível gerar o QR Code. Verifique se o servidor do WhatsApp está no ar.");
       }

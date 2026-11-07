@@ -15,26 +15,53 @@ async function clienteDaAssistente(clienteId: string) {
   return data;
 }
 
-export async function conectarWhatsapp(clienteId: string): Promise<Conexao> {
+const VARIAVEIS = ["EVOLUTION_API_URL", "EVOLUTION_API_KEY", "SUPABASE_SERVICE_ROLE_KEY", "APP_URL", "WEBHOOK_SECRET"];
+
+// Traduz a falha da Evolution API numa mensagem que diz o que conferir na configuração.
+function explicarErro(e: unknown): string {
+  if (!(e instanceof evolution.ErroEvolution)) return "Erro inesperado ao gerar o QR Code.";
+  if (e.status === 0) return `Não consegui acessar o servidor do WhatsApp. Confira o EVOLUTION_API_URL na Vercel. (${e.corpo.slice(0, 120)})`;
+  if (e.status === 401 || (e.status === 403 && /unauthorized|forbidden/i.test(e.corpo)))
+    return "O servidor do WhatsApp recusou a chave. Confira o EVOLUTION_API_KEY na Vercel.";
+  if (e.status === 404) return "Endereço do servidor do WhatsApp incompleto. Confira o EVOLUTION_API_URL na Vercel.";
+  return `O servidor do WhatsApp respondeu com erro ${e.status}: ${e.corpo.slice(0, 160)}`;
+}
+
+export async function conectarWhatsapp(clienteId: string): Promise<{ conexao?: Conexao; erro?: string }> {
+  const faltando = VARIAVEIS.filter((v) => !process.env[v]?.trim());
+  if (faltando.length) return { erro: `Falta configurar na Vercel: ${faltando.join(", ")}.` };
+
   const cliente = await clienteDaAssistente(clienteId);
   const admin = createAdminClient();
   const instancia = `av-${cliente.id}`;
 
-  const { data: existente } = await admin
+  const { data: existente, error: erroBanco } = await admin
     .from("conexoes_whatsapp")
     .select("id")
     .eq("cliente_id", cliente.id)
     .maybeSingle();
+  if (erroBanco) return { erro: "Não consegui acessar o banco de dados. Confira o SUPABASE_SERVICE_ROLE_KEY na Vercel." };
 
   let qr: string | null = null;
-  if (existente) {
-    qr = (await evolution.gerarQrCode(instancia)).base64 ?? null;
-  } else {
-    qr = (await evolution.criarInstancia(instancia)).qrcode?.base64 ?? null;
+  try {
+    if (existente) {
+      qr = (await evolution.gerarQrCode(instancia)).base64 ?? null;
+    } else {
+      try {
+        qr = (await evolution.criarInstancia(instancia)).qrcode?.base64 ?? null;
+      } catch (e) {
+        // A instância já existe no servidor (por exemplo, de uma tentativa anterior): só pede um QR Code novo.
+        if (!(e instanceof evolution.ErroEvolution && /already in use/i.test(e.corpo))) throw e;
+        qr = (await evolution.gerarQrCode(instancia)).base64 ?? null;
+      }
+    }
+  } catch (e) {
+    console.error("conectarWhatsapp", e);
+    return { erro: explicarErro(e) };
   }
 
   const conexao = { status: "aguardando_qr", qr_code: qr, numero: null };
-  await admin.from("conexoes_whatsapp").upsert(
+  const { error: erroSalvar } = await admin.from("conexoes_whatsapp").upsert(
     {
       cliente_id: cliente.id,
       assistente_id: cliente.assistente_id,
@@ -44,7 +71,8 @@ export async function conectarWhatsapp(clienteId: string): Promise<Conexao> {
     },
     { onConflict: "cliente_id" },
   );
-  return conexao;
+  if (erroSalvar) return { erro: "Não consegui salvar a conexão no banco. Confira o SUPABASE_SERVICE_ROLE_KEY na Vercel." };
+  return { conexao };
 }
 
 // Chamado enquanto o QR Code está na tela: confirma o estado direto na Evolution API,

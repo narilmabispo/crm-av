@@ -5,18 +5,35 @@ import "server-only";
 
 const EVENTOS = ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT"];
 
+export class ErroEvolution extends Error {
+  constructor(
+    public status: number,
+    public corpo: string,
+  ) {
+    super(`Evolution API ${status}: ${corpo}`);
+  }
+}
+
 async function chamar<T>(caminho: string, init: RequestInit = {}): Promise<T> {
-  const resposta = await fetch(`${process.env.EVOLUTION_API_URL}${caminho}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", apikey: process.env.EVOLUTION_API_KEY!, ...init.headers },
-    cache: "no-store",
-  });
-  if (!resposta.ok) throw new Error(`Evolution API ${caminho}: ${resposta.status} ${await resposta.text()}`);
+  const base = (process.env.EVOLUTION_API_URL ?? "").trim().replace(/\/+$/, "");
+  let resposta: Response;
+  try {
+    resposta = await fetch(`${base}${caminho}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", apikey: (process.env.EVOLUTION_API_KEY ?? "").trim(), ...init.headers },
+      cache: "no-store",
+    });
+  } catch (e) {
+    // Servidor fora do ar, endereço errado ou certificado inválido.
+    throw new ErroEvolution(0, e instanceof Error ? `${e.message} ${String(e.cause ?? "")}` : String(e));
+  }
+  if (!resposta.ok) throw new ErroEvolution(resposta.status, await resposta.text());
   return resposta.json() as Promise<T>;
 }
 
 export function urlWebhook() {
-  return `${process.env.APP_URL}/api/whatsapp/webhook?token=${process.env.WEBHOOK_SECRET}`;
+  const app = (process.env.APP_URL ?? "").trim().replace(/\/+$/, "");
+  return `${app}/api/whatsapp/webhook?token=${encodeURIComponent((process.env.WEBHOOK_SECRET ?? "").trim())}`;
 }
 
 export async function criarInstancia(instancia: string) {
