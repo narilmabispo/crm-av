@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Avatar } from "@/components/ListaWhatsapps";
 import { carregarConta, type Cliente } from "@/lib/conta";
 import { atualizarCliente, excluirCliente } from "../actions";
 import { FormCliente } from "../FormCliente";
@@ -30,14 +31,17 @@ export default async function PerfilCliente({ params, searchParams }: Props) {
 
   return (
     <>
-      <Link href="/painel" className="text-sm text-gray-500 hover:text-marca">
-        ← Meus clientes
+      <Link href="/clientes" className="text-sm text-gray-500 hover:text-marca">
+        ← Clientes
       </Link>
-      <div className="mt-2 mb-6">
-        <h1 className="text-2xl font-semibold">{cliente.nome}</h1>
-        <p className="text-sm text-gray-600">
-          {[cliente.profissao, cliente.empresa, cliente.cidade].filter(Boolean).join(" · ")}
-        </p>
+      <div className="mt-3 mb-6 flex items-center gap-4">
+        <Avatar nome={cliente.nome} tamanho="h-14 w-14" />
+        <div>
+          <h1 className="text-2xl font-bold text-tinta">{cliente.nome}</h1>
+          <p className="text-sm text-gray-600">
+            {[cliente.profissao, cliente.empresa, cliente.cidade].filter(Boolean).join(" · ")}
+          </p>
+        </div>
       </div>
 
       <nav className="mb-6 flex gap-1 border-b border-gray-200">
@@ -56,7 +60,7 @@ export default async function PerfilCliente({ params, searchParams }: Props) {
 
       {aba === "perfil" ? (
         <div className="max-w-2xl space-y-6">
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+          <div className="cartao p-6">
             <FormCliente acao={atualizarCliente.bind(null, id)} cliente={cliente} botao="Salvar perfil" />
           </div>
           <form action={excluirCliente.bind(null, id)}>
