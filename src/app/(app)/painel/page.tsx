@@ -3,6 +3,8 @@ import { BotaoNovoWhatsapp } from "@/components/BotaoNovoWhatsapp";
 import { Icone, type NomeIcone } from "@/components/Icone";
 import { ListaWhatsapps } from "@/components/ListaWhatsapps";
 import { carregarConta } from "@/lib/conta";
+import { hoje as dataDeHoje } from "@/lib/datas";
+import { ListaTarefas, type Tarefa } from "../tarefas/ListaTarefas";
 import { MARCA } from "@/lib/marca";
 import { carregarWhatsapps, iniciais } from "@/lib/whatsapps";
 
@@ -18,7 +20,19 @@ function Metrica({ href, icone, valor, rotulo, cor }: { href: string; icone: Nom
 
 export default async function Painel() {
   const { supabase, nome, podeAdicionar, totalClientes } = await carregarConta();
-  const whatsapps = await carregarWhatsapps(supabase);
+  const hoje = dataDeHoje();
+  const [whatsapps, { data: tarefasData }] = await Promise.all([
+    carregarWhatsapps(supabase),
+    // Tarefas de hoje e atrasadas, ainda não feitas.
+    supabase
+      .from("tarefas")
+      .select("id, titulo, vence_em, feita, cliente_id, conversa_id, cliente:clientes(nome)")
+      .eq("feita", false)
+      .lte("vence_em", hoje)
+      .order("vence_em")
+      .limit(50),
+  ]);
+  const tarefasDoDia = (tarefasData ?? []) as unknown as Tarefa[];
   const conectados = whatsapps.filter((w) => w.status === "conectado").length;
   const naoLidas = whatsapps.reduce((soma, w) => soma + w.naoLidas, 0);
   const primeiroNome = nome.includes("@") ? "" : nome.split(" ")[0];
@@ -41,8 +55,20 @@ export default async function Painel() {
         <Metrica href="/conexoes" icone="whatsapp" valor={conectados} rotulo="WhatsApps conectados" cor="bg-lavanda text-marca" />
         <Metrica href="/atendimentos" icone="atendimentos" valor={naoLidas} rotulo="Conversas não lidas" cor="bg-orange-50 text-laranja" />
         <Metrica href="/clientes" icone="clientes" valor={totalClientes} rotulo="Clientes ativos" cor="bg-violet-50 text-marca-escura" />
-        <Metrica href="/tarefas" icone="check" valor={0} rotulo="Tarefas do dia" cor="bg-emerald-50 text-emerald-600" />
+        <Metrica href="/tarefas" icone="check" valor={tarefasDoDia.length} rotulo="Tarefas do dia" cor="bg-emerald-50 text-emerald-600" />
       </div>
+
+      {tarefasDoDia.length > 0 && (
+        <section className="mb-10">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-xl font-bold text-tinta">Tarefas do dia</h2>
+            <Link href="/tarefas" className="text-sm font-medium text-marca-escura hover:underline">
+              Ver todas →
+            </Link>
+          </div>
+          <ListaTarefas tarefas={tarefasDoDia.slice(0, 5)} hoje={hoje} />
+        </section>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-bold whitespace-nowrap text-tinta">Seus WhatsApps</h2>

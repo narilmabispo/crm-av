@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { desconectarWhatsapp, importarHistorico, marcarComoLida, novaConversa } from "./actions";
+import { corDaEtiqueta, type Etiqueta } from "@/lib/etiquetas";
+import { AcoesConversa } from "./AcoesConversa";
 import { Bolha } from "./Bolha";
 import { Composer } from "./Composer";
 
@@ -32,6 +34,10 @@ type Props = {
   conversas: Conversa[];
   selecionada: Conversa | null;
   mensagens: Mensagem[];
+  etiquetas: Etiqueta[];
+  // Etiquetas de cada conversa: id da conversa -> ids das etiquetas.
+  marcacoes: Record<string, string[]>;
+  hoje: string;
 };
 
 const hora = (iso: string | null) =>
@@ -41,8 +47,18 @@ const hora = (iso: string | null) =>
 const titulo = (c: Conversa) =>
   c.nome || (c.jid.endsWith("@lid") ? "Contato sem nome" : "+" + c.jid.split("@")[0]);
 
-export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, mensagens: msgsIniciais }: Props) {
+export function Inbox({
+  clienteId,
+  numero,
+  conversas: iniciais,
+  selecionada,
+  mensagens: msgsIniciais,
+  etiquetas,
+  marcacoes,
+  hoje,
+}: Props) {
   const [conversas, setConversas] = useState(iniciais);
+  const [filtro, setFiltro] = useState("");
   const [mensagens, setMensagens] = useState(msgsIniciais);
   const [importando, iniciarImportacao] = useTransition();
   const [aviso, setAviso] = useState<string>();
@@ -171,11 +187,31 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
               </button>
             </form>
             {erroNova && <p className="mt-1 text-xs text-red-600">{erroNova}</p>}
+            {etiquetas.length > 0 && (
+              <select
+                value={filtro}
+                onChange={(e) => setFiltro(e.target.value)}
+                className="campo mt-2 py-1.5 text-sm"
+                aria-label="Filtrar por etiqueta"
+              >
+                <option value="">Todas as conversas</option>
+                {etiquetas.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    Etiqueta: {e.nome}
+                  </option>
+                ))}
+              </select>
+            )}
           </li>
           {conversas.length === 0 && (
             <li className="p-6 text-sm text-gray-500">As conversas aparecem aqui quando alguém mandar mensagem.</li>
           )}
-          {conversas.map((c) => (
+          {filtro && !conversas.some((c) => marcacoes[c.id]?.includes(filtro)) && (
+            <li className="p-6 text-sm text-gray-500">Nenhuma conversa com essa etiqueta.</li>
+          )}
+          {conversas
+            .filter((c) => !filtro || marcacoes[c.id]?.includes(filtro))
+            .map((c) => (
             <li key={c.id}>
               <Link
                 href={`/clientes/${clienteId}?aba=atendimento&conversa=${c.id}`}
@@ -189,6 +225,17 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
                     <span className="shrink-0 text-xs text-gray-400">{hora(c.ultima_em)}</span>
                   </div>
                   <p className="truncate text-sm text-gray-500">{c.ultima_mensagem}</p>
+                  {(marcacoes[c.id]?.length ?? 0) > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {etiquetas
+                        .filter((e) => marcacoes[c.id].includes(e.id))
+                        .map((e) => (
+                          <span key={e.id} className={`rounded-full px-2 py-px text-[11px] font-medium ${corDaEtiqueta(e.cor).chip}`}>
+                            {e.nome}
+                          </span>
+                        ))}
+                    </div>
+                  )}
                 </div>
                 {c.nao_lidas > 0 && c.id !== selecionada?.id && (
                   <span className="self-center rounded-full bg-marca px-2 text-xs text-white">{c.nao_lidas}</span>
@@ -200,11 +247,20 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
 
         {selecionada ? (
           <div className="flex min-h-0 flex-col">
-            <div className="flex items-center gap-3 border-b border-gray-200 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-3">
               <Link href={`/clientes/${clienteId}?aba=atendimento`} className="text-gray-500 md:hidden">
                 ←
               </Link>
-              <p className="font-medium">{titulo(selecionada)}</p>
+              <p className="flex-1 font-medium">{titulo(selecionada)}</p>
+              <AcoesConversa
+                key={selecionada.id}
+                clienteId={clienteId}
+                conversaId={selecionada.id}
+                nomeContato={titulo(selecionada)}
+                etiquetas={etiquetas}
+                marcadas={marcacoes[selecionada.id] ?? []}
+                hoje={hoje}
+              />
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto bg-[#efeae2] p-4">
               {mensagens.map((m) => (

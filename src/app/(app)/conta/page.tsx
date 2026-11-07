@@ -1,48 +1,41 @@
+import Link from "next/link";
+import { Icone } from "@/components/Icone";
 import { carregarConta } from "@/lib/conta";
 
-const STATUS: Record<string, string> = {
-  teste: "Período de teste",
-  ativa: "Ativa",
-  atrasada: "Pagamento atrasado",
-  cancelada: "Cancelada",
-};
-
 export default async function Conta() {
-  const { supabase, user, nome, plano, status, totalClientes, limite } = await carregarConta();
-  const { data: planos } = await supabase
-    .from("planos")
-    .select("id, nome, limite_clientes, preco_centavos")
-    .order("limite_clientes");
+  const { user, nome, plano, totalClientes, limite } = await carregarConta();
 
   return (
     <div className="max-w-2xl space-y-6">
       <h1 className="text-2xl font-bold text-tinta">Configurações</h1>
-      <section className="cartao p-6 text-sm">
-        <p className="font-medium">{nome}</p>
-        <p className="text-gray-600">{user.email}</p>
+      <section className="cartao flex flex-wrap items-center justify-between gap-3 p-6 text-sm">
+        <div>
+          <p className="font-medium">{nome}</p>
+          <p className="text-gray-600">{user.email}</p>
+        </div>
+        <Link href="/perfil" className="botao-secundario">
+          <Icone nome="usuario" className="h-4 w-4" /> Editar meu perfil
+        </Link>
       </section>
-      <section className="cartao p-6 text-sm">
-        <h2 className="mb-2 font-semibold text-tinta">Assinatura</h2>
-        <p>
-          {plano?.nome ?? "Sem plano"} · {STATUS[status] ?? status} · {totalClientes} de {limite} clientes
-        </p>
-        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-          {(planos ?? []).map((p) => (
-            <li
-              key={p.id}
-              className={`rounded-xl border p-4 ${p.id === plano?.id ? "border-marca bg-lavanda" : "border-gray-200"}`}
-            >
-              <p className="font-medium">{p.nome}</p>
-              <p className="text-gray-600">Até {p.limite_clientes} clientes</p>
-              <p className="mt-1 text-gray-600">
-                {p.preco_centavos > 0
-                  ? (p.preco_centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) + "/mês"
-                  : "Preço a definir"}
-              </p>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-4 text-gray-500">A troca de plano e o pagamento entram na etapa de cobrança.</p>
+      <section className="cartao flex flex-wrap items-center justify-between gap-3 p-6 text-sm">
+        <div>
+          <h2 className="font-semibold text-tinta">Assinatura</h2>
+          <p className="text-gray-600">
+            {plano?.nome ?? "Sem plano"} · {totalClientes} de {limite} clientes
+          </p>
+        </div>
+        <Link href="/perfil#financeiro" className="botao-secundario">
+          <Icone nome="coroa" className="h-4 w-4" /> Ver plano e pagamento
+        </Link>
+      </section>
+      <section className="cartao flex flex-wrap items-center justify-between gap-3 p-6 text-sm">
+        <div>
+          <h2 className="font-semibold text-tinta">Etiquetas</h2>
+          <p className="text-gray-600">Crie, renomeie e troque a cor das etiquetas das conversas.</p>
+        </div>
+        <Link href="/etiquetas" className="botao-secundario">
+          <Icone nome="etiquetas" className="h-4 w-4" /> Gerenciar etiquetas
+        </Link>
       </section>
     </div>
   );

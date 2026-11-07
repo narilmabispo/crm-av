@@ -1,3 +1,5 @@
+import { hoje } from "@/lib/datas";
+import type { Etiqueta } from "@/lib/etiquetas";
 import { createClient } from "@/lib/supabase/server";
 import { ConectarWhatsapp } from "./ConectarWhatsapp";
 import { Inbox, type Conversa, type Mensagem } from "./Inbox";
@@ -16,12 +18,22 @@ export async function Atendimento({ clienteId, nomeCliente, conversaId }: Props)
     return <ConectarWhatsapp clienteId={clienteId} nomeCliente={nomeCliente} conexao={conexao} />;
   }
 
-  const { data: conversas } = await supabase
-    .from("conversas")
-    .select("id, jid, nome, ultima_mensagem, ultima_em, nao_lidas")
-    .eq("cliente_id", clienteId)
-    .order("ultima_em", { ascending: false, nullsFirst: false })
-    .limit(200);
+  const [{ data: conversas }, { data: etiquetas }, { data: marcadas }] = await Promise.all([
+    supabase
+      .from("conversas")
+      .select("id, jid, nome, ultima_mensagem, ultima_em, nao_lidas")
+      .eq("cliente_id", clienteId)
+      .order("ultima_em", { ascending: false, nullsFirst: false })
+      .limit(200),
+    supabase.from("etiquetas").select("id, nome, cor").order("criado_em"),
+    supabase
+      .from("conversa_etiquetas")
+      .select("conversa_id, etiqueta_id, conversa:conversas!inner(cliente_id)")
+      .eq("conversa.cliente_id", clienteId),
+  ]);
+
+  const marcacoes: Record<string, string[]> = {};
+  for (const m of marcadas ?? []) (marcacoes[m.conversa_id] ??= []).push(m.etiqueta_id);
 
   const selecionada = (conversas ?? []).find((c) => c.id === conversaId) ?? null;
   let mensagens: Mensagem[] = [];
@@ -42,6 +54,9 @@ export async function Atendimento({ clienteId, nomeCliente, conversaId }: Props)
       conversas={(conversas ?? []) as Conversa[]}
       selecionada={selecionada as Conversa | null}
       mensagens={mensagens}
+      etiquetas={(etiquetas ?? []) as Etiqueta[]}
+      marcacoes={marcacoes}
+      hoje={hoje()}
     />
   );
 }
