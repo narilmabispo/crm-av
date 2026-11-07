@@ -173,3 +173,13 @@ export async function enviarTexto(instancia: string, jid: string, texto: string)
     body: JSON.stringify({ number: destino(jid), text: texto }),
   });
 }
+
+// Confere se o número tem WhatsApp e devolve o código certo (resolve o 9º dígito do Brasil).
+export async function verificarNumero(instancia: string, numero: string) {
+  const r = await chamar<{ exists?: boolean; jid?: string }[]>(`/chat/whatsappNumbers/${instancia}`, {
+    method: "POST",
+    body: JSON.stringify({ numbers: [numero] }),
+  });
+  const item = Array.isArray(r) ? r[0] : undefined;
+  return { existe: Boolean(item?.exists), jid: item?.jid };
+}

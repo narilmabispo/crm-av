@@ -281,3 +281,44 @@ export async function importarHistorico(clienteId: string): Promise<{ conversas?
     return { erro: explicarErro(e) };
   }
 }
+
+// Abre (ou reaproveita) uma conversa com um número digitado pela assistente.
+export async function novaConversa(clienteId: string, numeroDigitado: string): Promise<{ conversaId?: string; erro?: string }> {
+  const cliente = await clienteDaAssistente(clienteId);
+  let numero = numeroDigitado.replace(/\D/g, "");
+  if (numero.length === 10 || numero.length === 11) numero = "55" + numero; // DDD + número, sem o 55
+  if (numero.length < 12 || numero.length > 15) return { erro: "Número inválido. Digite com DDD, ex.: (73) 98805-4315." };
+
+  const admin = createAdminClient();
+  const { data: conexao } = await admin
+    .from("conexoes_whatsapp")
+    .select("instancia, status")
+    .eq("cliente_id", clienteId)
+    .single();
+  if (conexao?.status !== "conectado") return { erro: "O WhatsApp deste cliente está desconectado." };
+
+  let jid = `${numero}@s.whatsapp.net`;
+  try {
+    const r = await evolution.verificarNumero(conexao.instancia, numero);
+    if (!r.existe) return { erro: "Esse número não tem WhatsApp." };
+    if (r.jid) jid = r.jid;
+  } catch (e) {
+    console.error("verificarNumero", e); // se a checagem falhar, seguimos com o número digitado
+  }
+
+  const { data: existente } = await admin
+    .from("conversas")
+    .select("id")
+    .eq("cliente_id", clienteId)
+    .eq("jid", jid)
+    .maybeSingle();
+  if (existente) return { conversaId: existente.id };
+
+  const { data: nova, error } = await admin
+    .from("conversas")
+    .insert({ cliente_id: clienteId, assistente_id: cliente.assistente_id, jid, ultima_em: new Date().toISOString() })
+    .select("id")
+    .single();
+  if (error || !nova) return { erro: "Não foi possível abrir a conversa." };
+  return { conversaId: nova.id };
+}

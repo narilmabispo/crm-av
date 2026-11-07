@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { desconectarWhatsapp, importarHistorico, marcarComoLida } from "./actions";
+import { desconectarWhatsapp, importarHistorico, marcarComoLida, novaConversa } from "./actions";
 import { Bolha } from "./Bolha";
 import { Composer } from "./Composer";
 
@@ -111,6 +111,20 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
     return () => clearInterval(timer);
   }, [router]);
 
+  const [abrindo, iniciarAbertura] = useTransition();
+  const [erroNova, setErroNova] = useState<string>();
+
+  const abrirNova = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const numero = String(new FormData(e.currentTarget).get("numero") ?? "");
+    iniciarAbertura(async () => {
+      setErroNova(undefined);
+      const r = await novaConversa(clienteId, numero);
+      if (r.erro) setErroNova(r.erro);
+      else router.push(`/clientes/${clienteId}?aba=atendimento&conversa=${r.conversaId}`);
+    });
+  };
+
   const importar = () =>
     iniciarImportacao(async () => {
       setAviso(undefined);
@@ -143,6 +157,21 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
       </div>
       <div className="grid h-[70vh] grid-cols-1 md:grid-cols-[300px_1fr]">
         <ul className={`overflow-y-auto border-r border-gray-200 ${selecionada ? "hidden md:block" : ""}`}>
+          <li className="border-b border-gray-200 p-3">
+            <form onSubmit={abrirNova} className="flex gap-2">
+              <input
+                name="numero"
+                inputMode="tel"
+                required
+                placeholder="Nova conversa: (DDD) número"
+                className="campo py-1.5 text-sm"
+              />
+              <button className="botao px-3 py-1.5 text-sm" disabled={abrindo} title="Abrir conversa">
+                {abrindo ? "..." : "+"}
+              </button>
+            </form>
+            {erroNova && <p className="mt-1 text-xs text-red-600">{erroNova}</p>}
+          </li>
           {conversas.length === 0 && (
             <li className="p-6 text-sm text-gray-500">As conversas aparecem aqui quando alguém mandar mensagem.</li>
           )}

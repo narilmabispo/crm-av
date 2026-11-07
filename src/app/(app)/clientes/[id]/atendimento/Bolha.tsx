@@ -33,6 +33,30 @@ function Conteudo({ m }: { m: Mensagem }) {
   }
 }
 
+// Deixa os links da mensagem clicáveis (abrem numa aba nova).
+const LINK = /((?:https?:\/\/|www\.)[^\s<]+[^\s<.,;:!?)\]'"])/gi;
+function TextoComLinks({ texto }: { texto: string }) {
+  return (
+    <>
+      {texto.split(LINK).map((parte, i) =>
+        i % 2 === 1 ? (
+          <a
+            key={i}
+            href={parte.startsWith("www.") ? `https://${parte}` : parte}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="break-all text-blue-600 underline"
+          >
+            {parte}
+          </a>
+        ) : (
+          parte
+        ),
+      )}
+    </>
+  );
+}
+
 export function Bolha({ m }: { m: Mensagem }) {
   const figurinha = m.tipo === "figurinha";
   return (
@@ -43,7 +67,8 @@ export function Bolha({ m }: { m: Mensagem }) {
         }`}
       >
         <Conteudo m={m} />
-        {m.texto && <p className="whitespace-pre-wrap break-words px-1">{m.texto}</p>}
+        {m.texto && <p className="whitespace-pre-wrap break-words px-1"><TextoComLinks texto={m.texto} />
+          </p>}
         <p className="px-1 text-right text-[10px] text-gray-500">{hora(m.enviada_em)}</p>
       </div>
     </div>
