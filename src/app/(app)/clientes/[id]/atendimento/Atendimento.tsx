@@ -28,7 +28,7 @@ export async function Atendimento({ clienteId, nomeCliente, conversaId }: Props)
   if (selecionada) {
     const { data } = await supabase
       .from("mensagens")
-      .select("id, de_mim, texto, enviada_em")
+      .select("id, de_mim, tipo, texto, midia_nome, enviada_em")
       .eq("conversa_id", selecionada.id)
       .order("enviada_em", { ascending: false })
       .limit(100);

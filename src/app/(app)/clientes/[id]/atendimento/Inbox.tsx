@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { desconectarWhatsapp, enviarMensagem, importarHistorico, marcarComoLida } from "./actions";
+import { desconectarWhatsapp, importarHistorico, marcarComoLida } from "./actions";
+import { Bolha } from "./Bolha";
+import { Composer } from "./Composer";
 
 export type Conversa = {
   id: string;
@@ -15,7 +17,14 @@ export type Conversa = {
   nao_lidas: number;
 };
 
-export type Mensagem = { id: string; de_mim: boolean; texto: string | null; enviada_em: string };
+export type Mensagem = {
+  id: string;
+  de_mim: boolean;
+  tipo: string;
+  texto: string | null;
+  midia_nome: string | null;
+  enviada_em: string;
+};
 
 type Props = {
   clienteId: string;
@@ -28,14 +37,13 @@ type Props = {
 const hora = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
 
-const titulo = (c: Conversa) => c.nome || "+" + c.jid.split("@")[0];
+// Contatos com código interno (@lid) não têm número visível: mostramos "Contato sem nome".
+const titulo = (c: Conversa) =>
+  c.nome || (c.jid.endsWith("@lid") ? "Contato sem nome" : "+" + c.jid.split("@")[0]);
 
 export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, mensagens: msgsIniciais }: Props) {
   const [conversas, setConversas] = useState(iniciais);
   const [mensagens, setMensagens] = useState(msgsIniciais);
-  const [texto, setTexto] = useState("");
-  const [erro, setErro] = useState<string>();
-  const [enviando, iniciar] = useTransition();
   const [importando, iniciarImportacao] = useTransition();
   const [aviso, setAviso] = useState<string>();
   const fim = useRef<HTMLDivElement>(null);
@@ -116,19 +124,6 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
       router.refresh();
     });
 
-  const enviar = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selecionada || !texto.trim()) return;
-    const conteudo = texto;
-    setTexto("");
-    iniciar(async () => {
-      const r = await enviarMensagem(selecionada.id, conteudo);
-      setErro(r.erro);
-      if (r.erro) setTexto(conteudo);
-      else router.refresh();
-    });
-  };
-
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2 text-sm">
@@ -184,35 +179,11 @@ export function Inbox({ clienteId, numero, conversas: iniciais, selecionada, men
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto bg-[#efeae2] p-4">
               {mensagens.map((m) => (
-                <div key={m.id} className={`flex ${m.de_mim ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[75%] rounded-lg px-3 py-2 text-sm shadow-sm ${
-                      m.de_mim ? "bg-[#d9fdd3]" : "bg-white"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap break-words">{m.texto}</p>
-                    <p className="mt-1 text-right text-[10px] text-gray-500">{hora(m.enviada_em)}</p>
-                  </div>
-                </div>
+                <Bolha key={m.id} m={m} />
               ))}
               <div ref={fim} />
             </div>
-            <form onSubmit={enviar} className="flex gap-2 border-t border-gray-200 p-3">
-              <textarea
-                value={texto}
-                onChange={(e) => setTexto(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) enviar(e);
-                }}
-                rows={1}
-                placeholder="Digite uma mensagem"
-                className="campo resize-none"
-              />
-              <button className="botao" disabled={enviando}>
-                Enviar
-              </button>
-            </form>
-            {erro && <p className="px-3 pb-3 text-sm text-red-600">{erro}</p>}
+            <Composer key={selecionada.id} conversaId={selecionada.id} aoEnviar={() => router.refresh()} />
           </div>
         ) : (
           <div className="hidden items-center justify-center text-sm text-gray-500 md:flex">

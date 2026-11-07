@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import * as evolution from "@/lib/evolution";
-import { ehConversaIndividual } from "@/lib/mensagem-whatsapp";
+import { ehConversaIndividual, resumo } from "@/lib/mensagem-whatsapp";
+import { garantirArquivo, linkTemporario } from "@/lib/midia";
 import { salvarMensagens, type MensagemEvolution } from "@/lib/salvar-mensagens";
 
 export type Conexao = { status: string; qr_code: string | null; numero: string | null };
@@ -113,10 +114,14 @@ export async function desconectarWhatsapp(clienteId: string) {
   revalidatePath(`/clientes/${clienteId}`);
 }
 
-export async function enviarMensagem(conversaId: string, texto: string): Promise<{ erro?: string }> {
-  const limpo = texto.trim();
-  if (!limpo) return {};
+type Envio = { tipo: string; texto: string; midia_path?: string; midia_mimetype?: string; midia_nome?: string };
 
+// Confere a conversa e a conexão, envia pelo WhatsApp e registra a mensagem no chat.
+async function enviar(
+  conversaId: string,
+  envio: Envio,
+  mandar: (instancia: string, jid: string) => Promise<{ key?: { id?: string } }>,
+): Promise<{ erro?: string }> {
   const supabase = await createClient();
   const { data: conversa } = await supabase
     .from("conversas")
@@ -135,9 +140,9 @@ export async function enviarMensagem(conversaId: string, texto: string): Promise
 
   let waId: string | undefined;
   try {
-    waId = (await evolution.enviarTexto(conexao.instancia, conversa.jid, limpo)).key?.id;
+    waId = (await mandar(conexao.instancia, conversa.jid)).key?.id;
   } catch (e) {
-    console.error("enviarMensagem", e);
+    console.error("enviar", e);
     return { erro: `Não foi possível enviar. ${explicarErro(e)}` };
   }
 
@@ -148,17 +153,91 @@ export async function enviarMensagem(conversaId: string, texto: string): Promise
       assistente_id: conversa.assistente_id,
       wa_id: waId ?? `local-${crypto.randomUUID()}`,
       de_mim: true,
-      tipo: "texto",
-      texto: limpo,
       enviada_em: agora,
+      ...envio,
     },
-    { onConflict: "conversa_id,wa_id", ignoreDuplicates: true },
+    // Sem ignorar duplicadas: se o aviso do WhatsApp chegou antes, completamos com o arquivo.
+    { onConflict: "conversa_id,wa_id" },
   );
   await admin
     .from("conversas")
-    .update({ ultima_mensagem: limpo, ultima_em: agora, nao_lidas: 0 })
+    .update({ ultima_mensagem: resumo(envio.tipo, envio.texto), ultima_em: agora, nao_lidas: 0 })
     .eq("id", conversa.id);
   return {};
+}
+
+export async function enviarMensagem(conversaId: string, texto: string): Promise<{ erro?: string }> {
+  const limpo = texto.trim();
+  if (!limpo) return {};
+  return enviar(conversaId, { tipo: "texto", texto: limpo }, (instancia, jid) =>
+    evolution.enviarTexto(instancia, jid, limpo),
+  );
+}
+
+type Arquivo = { caminho: string; mimetype: string; nome: string; legenda?: string };
+
+// O navegador já subiu o arquivo para a pasta da assistente no Supabase; aqui ele vai para o WhatsApp.
+export async function enviarArquivo(conversaId: string, arquivo: Arquivo): Promise<{ erro?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || !arquivo.caminho.startsWith(`${user.id}/`)) return { erro: "Arquivo inválido." };
+
+  const admin = createAdminClient();
+  const url = await linkTemporario(admin, arquivo.caminho, 600);
+  if (!url) return { erro: "Não encontrei o arquivo enviado. Tente de novo." };
+
+  const mime = arquivo.mimetype || "application/octet-stream";
+  const legenda = arquivo.legenda?.trim() ?? "";
+  const base = { texto: legenda, midia_path: arquivo.caminho, midia_mimetype: mime, midia_nome: arquivo.nome };
+
+  if (mime.startsWith("audio/")) {
+    return enviar(conversaId, { ...base, tipo: "áudio", texto: "" }, (instancia, jid) =>
+      evolution.enviarAudio(instancia, jid, url),
+    );
+  }
+  const tipo = mime.startsWith("image/") ? "image" : mime.startsWith("video/") ? "video" : "document";
+  const rotulo = { image: "imagem", video: "vídeo", document: "documento" }[tipo];
+  return enviar(conversaId, { ...base, tipo: rotulo }, (instancia, jid) =>
+    evolution.enviarMidia(instancia, jid, { tipo, url, mimetype: mime, nome: arquivo.nome, legenda }),
+  );
+}
+
+// Figurinhas que a assistente já recebeu, para reaproveitar no envio.
+export async function listarFigurinhas(): Promise<string[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("mensagens")
+    .select("id")
+    .eq("tipo", "figurinha")
+    .order("enviada_em", { ascending: false })
+    .limit(40);
+  return (data ?? []).map((m) => m.id);
+}
+
+export async function enviarFigurinha(conversaId: string, mensagemOrigemId: string): Promise<{ erro?: string }> {
+  const supabase = await createClient();
+  const { data: origem } = await supabase
+    .from("mensagens")
+    .select("id, wa_id, assistente_id, midia_path, midia_mimetype, conversa:conversas(cliente_id)")
+    .eq("id", mensagemOrigemId)
+    .single();
+  if (!origem) return { erro: "Figurinha não encontrada." };
+
+  const admin = createAdminClient();
+  const caminho = await garantirArquivo(admin, {
+    ...origem,
+    cliente_id: (origem.conversa as unknown as { cliente_id: string }).cliente_id,
+  });
+  const url = caminho ? await linkTemporario(admin, caminho, 600) : null;
+  if (!caminho || !url) return { erro: "Essa figurinha não está mais disponível." };
+
+  return enviar(
+    conversaId,
+    { tipo: "figurinha", texto: "", midia_path: caminho, midia_mimetype: origem.midia_mimetype ?? "image/webp" },
+    (instancia, jid) => evolution.enviarFigurinha(instancia, jid, url),
+  );
 }
 
 export async function marcarComoLida(conversaId: string) {
@@ -179,7 +258,9 @@ export async function importarHistorico(clienteId: string): Promise<{ conversas?
 
   try {
     await evolution.configurarInstancia(instancia).catch((e) => console.error("configurarInstancia", e));
-    const jids = (await evolution.listarConversas(instancia)).filter(ehConversaIndividual).slice(0, LIMITE_CONVERSAS);
+    const [chats, nomes] = await Promise.all([evolution.listarConversas(instancia), evolution.listarNomes(instancia)]);
+    for (const c of chats) if (c.nome && !nomes.has(c.jid)) nomes.set(c.jid, c.nome);
+    const jids = chats.map((c) => c.jid).filter(ehConversaIndividual).slice(0, LIMITE_CONVERSAS);
 
     let importadas = 0;
     for (let i = 0; i < jids.length; i += 5) {
@@ -188,7 +269,7 @@ export async function importarHistorico(clienteId: string): Promise<{ conversas?
         lote.map(async (jid) => {
           const mensagens = (await evolution.listarMensagens(instancia, jid, LIMITE_MENSAGENS)) as MensagemEvolution[];
           if (!mensagens.length) return;
-          await salvarMensagens(admin, conexao, mensagens, { historico: true });
+          await salvarMensagens(admin, conexao, mensagens, { historico: true, nomes });
           importadas++;
         }),
       );

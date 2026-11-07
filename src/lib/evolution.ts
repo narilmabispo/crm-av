@@ -48,7 +48,7 @@ export async function criarInstancia(instancia: string) {
       qrcode: true,
       groupsIgnore: true,
       syncFullHistory: true,
-      webhook: { url: urlWebhook(), byEvents: false, base64: true, events: EVENTOS },
+      webhook: { url: urlWebhook(), byEvents: false, base64: false, events: EVENTOS },
     }),
   });
 }
@@ -59,7 +59,7 @@ export async function configurarInstancia(instancia: string) {
   await chamar(`/webhook/set/${instancia}`, {
     method: "POST",
     body: JSON.stringify({
-      webhook: { enabled: true, url: urlWebhook(), byEvents: false, base64: true, events: EVENTOS },
+      webhook: { enabled: true, url: urlWebhook(), byEvents: false, base64: false, events: EVENTOS },
     }),
   });
   await chamar(`/settings/set/${instancia}`, {
@@ -75,11 +75,24 @@ export async function configurarInstancia(instancia: string) {
   });
 }
 
-type Chat = { remoteJid?: string; id?: string };
+type Chat = { remoteJid?: string; id?: string; pushName?: string | null; name?: string | null };
 
 export async function listarConversas(instancia: string) {
   const r = await chamar<Chat[]>(`/chat/findChats/${instancia}`, { method: "POST", body: "{}" });
-  return (Array.isArray(r) ? r : []).map((c) => c.remoteJid ?? c.id ?? "").filter(Boolean);
+  return (Array.isArray(r) ? r : [])
+    .map((c) => ({ jid: c.remoteJid ?? c.id ?? "", nome: c.pushName || c.name || null }))
+    .filter((c) => c.jid);
+}
+
+// Nomes dos contatos salvos no servidor, por código do WhatsApp.
+export async function listarNomes(instancia: string) {
+  const nomes = new Map<string, string>();
+  const r = await chamar<Chat[]>(`/chat/findContacts/${instancia}`, { method: "POST", body: "{}" }).catch(() => []);
+  for (const c of Array.isArray(r) ? r : []) {
+    const nome = c.pushName || c.name;
+    if (c.remoteJid && nome) nomes.set(c.remoteJid, nome);
+  }
+  return nomes;
 }
 
 export async function listarMensagens(instancia: string, jid: string, limite: number) {
@@ -89,6 +102,52 @@ export async function listarMensagens(instancia: string, jid: string, limite: nu
   });
   const registros = Array.isArray(r) ? r : (r.messages?.records ?? []);
   return registros.slice(0, limite);
+}
+
+// Baixa o arquivo de uma mensagem (foto, áudio...) que o servidor guardou.
+export async function baixarMidia(instancia: string, waId: string) {
+  return chamar<{ base64?: string; mimetype?: string; fileName?: string }>(
+    `/chat/getBase64FromMediaMessage/${instancia}`,
+    { method: "POST", body: JSON.stringify({ message: { key: { id: waId } }, convertToMp4: false }) },
+  );
+}
+
+// Número comum vai só com os dígitos; contato identificado por código interno (@lid) vai completo.
+const destino = (jid: string) => (jid.endsWith("@s.whatsapp.net") ? jid.split("@")[0] : jid);
+
+type Enviada = { key?: { id?: string } };
+
+export async function enviarMidia(
+  instancia: string,
+  jid: string,
+  midia: { tipo: "image" | "video" | "document"; url: string; mimetype: string; nome: string; legenda?: string },
+) {
+  return chamar<Enviada>(`/message/sendMedia/${instancia}`, {
+    method: "POST",
+    body: JSON.stringify({
+      number: destino(jid),
+      mediatype: midia.tipo,
+      mimetype: midia.mimetype,
+      media: midia.url,
+      fileName: midia.nome,
+      caption: midia.legenda ?? "",
+    }),
+  });
+}
+
+// Áudio gravado vai como mensagem de voz (o servidor converte o formato).
+export async function enviarAudio(instancia: string, jid: string, url: string) {
+  return chamar<Enviada>(`/message/sendWhatsAppAudio/${instancia}`, {
+    method: "POST",
+    body: JSON.stringify({ number: destino(jid), audio: url, encoding: true }),
+  });
+}
+
+export async function enviarFigurinha(instancia: string, jid: string, url: string) {
+  return chamar<Enviada>(`/message/sendSticker/${instancia}`, {
+    method: "POST",
+    body: JSON.stringify({ number: destino(jid), sticker: url }),
+  });
 }
 
 export async function gerarQrCode(instancia: string) {
@@ -109,9 +168,8 @@ export async function excluirInstancia(instancia: string) {
 }
 
 export async function enviarTexto(instancia: string, jid: string, texto: string) {
-  return chamar<{ key?: { id?: string } }>(`/message/sendText/${instancia}`, {
+  return chamar<Enviada>(`/message/sendText/${instancia}`, {
     method: "POST",
-    // Número comum vai só com os dígitos; contato identificado por código interno (@lid) vai completo.
-    body: JSON.stringify({ number: jid.endsWith("@s.whatsapp.net") ? jid.split("@")[0] : jid, text: texto }),
+    body: JSON.stringify({ number: destino(jid), text: texto }),
   });
 }
