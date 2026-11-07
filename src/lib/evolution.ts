@@ -5,6 +5,9 @@ import "server-only";
 
 const EVENTOS = ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT"];
 
+// Valor da variável sem espaços nem aspas coladas por engano.
+const limpar = (valor: string | undefined) => (valor ?? "").trim().replace(/^["']+|["']+$/g, "").trim();
+
 export class ErroEvolution extends Error {
   constructor(
     public status: number,
@@ -15,12 +18,12 @@ export class ErroEvolution extends Error {
 }
 
 async function chamar<T>(caminho: string, init: RequestInit = {}): Promise<T> {
-  const base = (process.env.EVOLUTION_API_URL ?? "").trim().replace(/\/+$/, "");
+  const base = limpar(process.env.EVOLUTION_API_URL).replace(/\/+$/, "");
   let resposta: Response;
   try {
     resposta = await fetch(`${base}${caminho}`, {
       ...init,
-      headers: { "Content-Type": "application/json", apikey: (process.env.EVOLUTION_API_KEY ?? "").trim(), ...init.headers },
+      headers: { "Content-Type": "application/json", apikey: limpar(process.env.EVOLUTION_API_KEY), ...init.headers },
       cache: "no-store",
     });
   } catch (e) {
